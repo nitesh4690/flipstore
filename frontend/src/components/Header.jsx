@@ -53,6 +53,14 @@ export default function Header() {
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {isAuthenticated ? (
             <div className="hidden items-center gap-2 sm:flex">
+              {user?.role === "admin" && (
+                <Link
+                  to="/admin"
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                >
+                  Admin
+                </Link>
+              )}
               <Link
                 to="/account"
                 className="max-w-36 truncate rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-brand-600"
@@ -169,13 +177,24 @@ export default function Header() {
                   >
                     Hi, {user?.first_name} · My account
                   </Link>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    className="text-sm font-semibold text-brand-600"
-                  >
-                    Logout
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {user?.role === "admin" && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className="text-sm font-semibold text-slate-900"
+                      >
+                        Admin
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="text-sm font-semibold text-brand-600"
+                    >
+                      Logout
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex gap-2 px-3 py-2">

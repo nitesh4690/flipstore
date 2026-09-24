@@ -125,6 +125,7 @@ def list_products(
     sort: str = "newest",
     page: int = 1,
     limit: int = 12,
+    include_inactive: bool = False,
 ) -> PaginatedProducts:
     """Search/filter/sort/paginate the catalog (public = active products only)."""
     if sort not in SORT_EXPRESSIONS:
@@ -135,7 +136,9 @@ def list_products(
     if min_price is not None and max_price is not None and min_price > max_price:
         raise AppError("min_price cannot be greater than max_price", status_code=400)
 
-    filters = [Product.is_active.is_(True)]
+    filters = []
+    if not include_inactive:
+        filters.append(Product.is_active.is_(True))
 
     if search:
         pattern = f"%{search.strip()}%"

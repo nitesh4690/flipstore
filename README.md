@@ -2,7 +2,7 @@
 
 A modern, production-ready e-commerce platform built with a **React (Vite) frontend** and a **FastAPI + PostgreSQL backend**.
 
-> **Status: Phase 5 complete** (cart, wishlist, checkout & orders). Remaining phases are listed in the [Roadmap](#roadmap) below.
+> **Status: Phase 6 complete** (admin dashboard: stats, catalog/order management, customers). Remaining phases are listed in the [Roadmap](#roadmap) below.
 
 ## Technology Stack
 
@@ -11,13 +11,13 @@ A modern, production-ready e-commerce platform built with a **React (Vite) front
 | Frontend  | React 19, Vite 7, React Router 7, Axios, Tailwind CSS 4, React Hook Form + Zod |
 | Backend   | Python, FastAPI, SQLAlchemy 2, Pydantic v2, Alembic, JWT, bcrypt |
 | Database  | PostgreSQL (SQLite fallback for quick local dev/tests) |
-| Tooling   | `.env` configuration, Swagger/OpenAPI docs, pytest (Phase 8), Docker (Phase 8) |
+| Tooling   | `.env` configuration, Swagger/OpenAPI docs, pytest suites, Docker (Phase 8) |
 
 ## Project Structure
 
 ```
 flip/
-├── frontend/            # React + Vite storefront & admin (Phase 6)
+├── frontend/            # React + Vite storefront & admin
 │   ├── src/
 │   │   ├── components/  # Reusable UI (Header, Footer, ProductCard, ...)
 │   │   ├── pages/       # Route-level pages
@@ -143,9 +143,11 @@ npm run dev
 ```
 
 Storefront pages: `/` (home), `/products` (listing + filters), `/products/:slug`
-(detail), `/cart`, `/checkout` (7-step wizard), `/login`, `/register`, and the
+(detail), `/cart`, `/checkout` (7-step wizard), `/login`, `/register`, the
 protected account area `/account` (profile, addresses, orders, order detail,
-wishlist, change password).
+wishlist, change password), and the admin area `/admin` (dashboard, products,
+categories & brands, orders, order detail, customers, customer detail — the
+header shows an **Admin** link only for admin accounts).
 
 Dev coupons seeded for checkout testing: **WELCOME10** (10% off), **SAVE20**
 (20% off, min $100), **FLAT15** ($15 off, min $50).
@@ -154,7 +156,7 @@ Dev coupons seeded for checkout testing: **WELCOME10** (10% off), **SAVE20**
 
 ```powershell
 cd backend
-python -m pytest          # backend test suite (68 tests, isolated SQLite test DB)
+python -m pytest          # backend test suite (92 tests, isolated SQLite test DB)
 ```
 
 Other useful scripts:
@@ -164,22 +166,28 @@ npm run build     # production build of the frontend
 npm run preview   # preview the production build
 ```
 
-## Frontend Architecture (Phase 4 + 5)
+## Frontend Architecture (Phase 4 + 5 + 6)
 
 ```
 frontend/src/
 ├── components/   Header, Footer, ProductCard, ProductGrid, ProductFilter,
 │                 SearchBar, Pagination, QuantitySelector, RatingStars, Price,
 │                 Modal, ConfirmDialog, LoadingSpinner, Skeleton, EmptyState,
-│                 ProtectedRoute (auth guard with ?next= redirect)
+│                 ProtectedRoute (auth guard with ?next= redirect),
+│                 AdminRoute (admin-role guard for /admin/*)
 ├── pages/        Home, Products, ProductDetail, Login, Register, Cart,
 │                 Checkout (7-step wizard), NotFound
-│   └── account/  AccountLayout (sidebar + Outlet), Profile, Addresses,
-│                 Orders, OrderDetail, Wishlist, ChangePassword
-├── layouts/      StoreLayout
+│   ├── account/  AccountLayout (sidebar + Outlet), Profile, Addresses,
+│   │             Orders, OrderDetail, Wishlist, ChangePassword
+│   └── admin/    Dashboard (KPI cards, 7-day revenue chart, low stock),
+│                 Products (search + CRUD modal), Categories (categories +
+│                 brands tabs), Orders (status tabs + search), OrderDetail
+│                 (lifecycle status controls), Customers, CustomerDetail
+├── layouts/      StoreLayout, AdminLayout (sidebar + Outlet, admin topbar)
 ├── context/      AuthContext, CartContext, WishlistContext, ToastContext
 ├── services/     api.js (axios + JWT interceptors), catalog.js (browse API),
-│                 shop.js (cart/wishlist/addresses/orders/account API)
+│                 shop.js (cart/wishlist/addresses/orders/account API),
+│                 admin.js (dashboard/orders/customers + admin CRUD API)
 ├── hooks/        useDocumentTitle
 └── utils/        format.js (currency/date/image fallback)
 ```
@@ -199,6 +207,16 @@ express $19.99 · pickup free) → payment (mock card gateway or cash on deliver
 → review (live totals incl. coupon) → confirmation. The backend reserves stock
 atomically in a single transaction and rolls the whole order back if anything
 fails.
+
+**Admin dashboard (Phase 6):** every `/admin/*` route is wrapped in `AdminRoute`
+(guests are sent to `/login?next=…`, signed-in non-admins never see admin UI)
+and rendered by `AdminLayout` with a sidebar. The dashboard shows revenue,
+orders, customers and products KPIs, a 7-day revenue bar chart,
+orders-by-status chips, recent orders and low-stock alerts. Products and
+categories/brands are managed through modal forms with confirm-before-delete;
+orders are filterable by status/search and each order has instant
+order/payment/shipping status controls; customers show order counts and
+lifetime spend with links into their latest orders.
 
 ## API Documentation
 
@@ -282,6 +300,22 @@ Totals rules: tax 8% of (subtotal − discount); standard shipping $9.99
 `cod` → pending. Stock is decremented with conditional UPDATEs inside one
 transaction — a concurrent-sell conflict returns 409 and rolls everything back.
 
+### Admin endpoints (Phase 6)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/admin/stats` | Admin | KPIs: revenue, order/customer/product counts, low stock, orders-by-status, 7-day revenue series, recent orders |
+| GET | `/api/admin/products?search=&page=&limit=` | Admin | All products **including inactive/drafts** (CRUD stays on `/api/products`) |
+| GET | `/api/admin/orders?status=&search=&page=&limit=` | Admin | Every customer's orders, lifecycle filter, search by order # / name / email |
+| GET | `/api/admin/orders/{id}` | Admin | Full order detail (items, totals, addresses, payments) + embedded customer |
+| PATCH | `/api/admin/orders/{id}` | Admin | Update `status` / `payment_status` / `shipping_status` (validated values, at least one field) |
+| GET | `/api/admin/customers?search=&page=&limit=` | Admin | Customers annotated with `order_count` + `total_spent` |
+| GET | `/api/admin/customers/{id}` | Admin | Customer profile, spend stats and latest 5 orders |
+
+Admin frontend routes: `/admin` (dashboard), `/admin/products`,
+`/admin/categories`, `/admin/orders`, `/admin/orders/:orderId`,
+`/admin/customers`, `/admin/customers/:customerId`.
+
 ## Docker Setup
 
 *Docker configuration (frontend + backend + PostgreSQL via `docker compose up`) ships in **Phase 8**.*
@@ -299,8 +333,6 @@ transaction — a concurrent-sell conflict returns 409 and rolls everything back
 | 3 | Product/category APIs, search, filter, sorting | ✅ |
 | 4 | React storefront: header, home, listing, details | ✅ |
 | 5 | Cart, wishlist, checkout, orders | ✅ |
-| 6 | Admin dashboard (products, categories, orders, customers) | ⬜ |
+| 6 | Admin dashboard (products, categories, orders, customers) | ✅ |
 | 7 | Payments, email notifications, reviews, coupons | ⬜ |
 | 8 | Testing, security hardening, performance, Docker, deployment | ⬜ |
-#   f l i p s t o r e  
- 

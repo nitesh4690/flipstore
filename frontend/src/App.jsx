@@ -1,6 +1,8 @@
 import { Route, Routes } from "react-router-dom";
 
+import AdminRoute from "./components/AdminRoute.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import AdminLayout from "./layouts/AdminLayout.jsx";
 import StoreLayout from "./layouts/StoreLayout.jsx";
 import AccountLayout from "./pages/account/AccountLayout.jsx";
 import Addresses from "./pages/account/Addresses.jsx";
@@ -9,6 +11,13 @@ import OrderDetail from "./pages/account/OrderDetail.jsx";
 import Orders from "./pages/account/Orders.jsx";
 import Profile from "./pages/account/Profile.jsx";
 import WishlistAccount from "./pages/account/Wishlist.jsx";
+import AdminCategories from "./pages/admin/Categories.jsx";
+import AdminDashboard from "./pages/admin/Dashboard.jsx";
+import AdminCustomerDetail from "./pages/admin/CustomerDetail.jsx";
+import AdminCustomers from "./pages/admin/Customers.jsx";
+import AdminOrderDetail from "./pages/admin/OrderDetail.jsx";
+import AdminOrders from "./pages/admin/Orders.jsx";
+import AdminProducts from "./pages/admin/Products.jsx";
 import Cart from "./pages/Cart.jsx";
 import Checkout from "./pages/Checkout.jsx";
 import Home from "./pages/Home.jsx";
@@ -20,8 +29,8 @@ import Register from "./pages/Register.jsx";
 
 /**
  * Route tree.
- * Phase 5 adds: /account/* (profile, addresses, orders, wishlist, password)
- * Phase 6 adds: /admin/* (dashboard, products, categories, orders, customers)
+ * Phase 5: /account/* (profile, addresses, orders, wishlist, password)
+ * Phase 6: /admin/* (dashboard, products, categories, orders, customers)
  */
 export default function App() {
   return (
@@ -59,6 +68,25 @@ export default function App() {
           <Route path="change-password" element={<ChangePassword />} />
         </Route>
       </Route>
+
+      {/* Admin area (auth + admin role required) */}
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <AdminLayout />
+          </AdminRoute>
+        }
+      >
+        <Route index element={<AdminDashboard />} />
+        <Route path="products" element={<AdminProducts />} />
+        <Route path="categories" element={<AdminCategories />} />
+        <Route path="orders" element={<AdminOrders />} />
+        <Route path="orders/:orderId" element={<AdminOrderDetail />} />
+        <Route path="customers" element={<AdminCustomers />} />
+        <Route path="customers/:customerId" element={<AdminCustomerDetail />} />
+      </Route>
+
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
