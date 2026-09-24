@@ -35,9 +35,13 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
 
     # CORS (NoDecode: accept plain comma-separated values instead of JSON)
+    # Deployed origins included so a fresh Vercel backend build (which has no
+    # .env) accepts the live storefront without dashboard configuration.
     CORS_ORIGINS: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://localhost:4173",  # `vite preview`
+        "https://flipstore-one.vercel.app",  # production storefront
     ]
 
     # Payments (Phase 7)
