@@ -55,6 +55,13 @@ export const updateBrand = (brandId, payload) =>
   request("put", `/brands/${brandId}`, payload);
 export const deleteBrand = (brandId) => request("delete", `/brands/${brandId}`);
 
+// --- Admin coupons (Phase 7) ---------------------------------------------------
+export const getCoupons = (params = {}) => get("/coupons", params);
+export const createCoupon = (payload) => request("post", "/coupons", payload);
+export const updateCoupon = (couponId, payload) =>
+  request("patch", `/coupons/${couponId}`, payload);
+export const deleteCoupon = (couponId) => request("delete", `/coupons/${couponId}`);
+
 /** Categories/brands incl. inactive rows (for admin selects + management). */
 export const getAdminCategories = () => get("/categories", { include_inactive: true });
 export const getAdminBrands = () => get("/brands", { include_inactive: true });

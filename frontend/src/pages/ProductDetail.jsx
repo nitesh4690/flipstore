@@ -7,6 +7,7 @@ import Price from "../components/Price.jsx";
 import ProductCard from "../components/ProductCard.jsx";
 import QuantitySelector from "../components/QuantitySelector.jsx";
 import RatingStars from "../components/RatingStars.jsx";
+import ReviewSection from "../components/ReviewSection.jsx";
 import { ProductGridSkeleton } from "../components/Skeleton.jsx";
 import { useCart } from "../context/CartContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -329,24 +330,7 @@ export default function ProductDetail() {
       </div>
 
       {/* Reviews */}
-      <section className="mt-14 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-xl font-extrabold text-slate-900">Customer reviews</h2>
-          <div className="flex items-center gap-3">
-            <RatingStars value={product.rating} size="text-lg" />
-            <span className="text-sm text-slate-500">
-              {product.rating_count} reviews
-            </span>
-          </div>
-        </div>
-        <div className="mt-6">
-          <EmptyState
-            icon="⭐"
-            title="Reviews are coming soon"
-            description="Detailed reviews and ratings arrive with the reviews module (Phase 7)."
-          />
-        </div>
-      </section>
+      <ReviewSection productId={product.id} />
 
       {/* Related */}
       <section className="mt-14">

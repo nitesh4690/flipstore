@@ -12,6 +12,7 @@ import Orders from "./pages/account/Orders.jsx";
 import Profile from "./pages/account/Profile.jsx";
 import WishlistAccount from "./pages/account/Wishlist.jsx";
 import AdminCategories from "./pages/admin/Categories.jsx";
+import AdminCoupons from "./pages/admin/Coupons.jsx";
 import AdminDashboard from "./pages/admin/Dashboard.jsx";
 import AdminCustomerDetail from "./pages/admin/CustomerDetail.jsx";
 import AdminCustomers from "./pages/admin/Customers.jsx";
@@ -81,6 +82,7 @@ export default function App() {
         <Route index element={<AdminDashboard />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="categories" element={<AdminCategories />} />
+        <Route path="coupons" element={<AdminCoupons />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="orders/:orderId" element={<AdminOrderDetail />} />
         <Route path="customers" element={<AdminCustomers />} />

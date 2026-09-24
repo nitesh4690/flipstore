@@ -8,7 +8,12 @@ Creates:
   - 11 brands
   - 22 realistic products (images, variants, sale prices, ratings)
   - 3 coupons
+  - 12 demo reviewers + product reviews (product rating/count recomputed
+    from the real review rows — one source of truth)
 """
+
+import random
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,9 +24,11 @@ from app.models.brand import Brand
 from app.models.category import Category
 from app.models.coupon import Coupon
 from app.models.product import Product, ProductImage, ProductVariant
+from app.models.review import Review
 from app.models.role import Role
 from app.models.user import User
 from app.services.auth import DEFAULT_ROLES
+from app.utils.datetime import utcnow
 from app.utils.text import slugify, unique_sku
 
 # Development defaults — override via environment in production deployments.
@@ -154,6 +161,30 @@ COUPONS = [
      "description": "20% off orders above 100"},
     {"code": "FLAT15", "discount_type": "fixed", "value": 15, "min_order_amount": 50,
      "description": "15 off orders above 50"},
+]
+
+# Demo reviewers — one shared password hash (they never sign in via the seed).
+REVIEWERS = [
+    ("Ava", "Chen"), ("Liam", "Ortiz"), ("Maya", "Patel"), ("Noah", "Kim"),
+    ("Sofia", "Reyes"), ("Ethan", "Brooks"), ("Isla", "Novak"), ("Lucas", "Meyer"),
+    ("Amara", "Diallo"), ("Jack", "Sullivan"), ("Yuki", "Tanaka"), ("Elena", "Rossi"),
+]
+
+REVIEW_COMMENTS = [
+    "Exceeded my expectations — the build quality feels premium.",
+    "Works exactly as described. Shipping was quick too.",
+    "Solid value for the price. I'd buy it again.",
+    "Good overall, though the packaging could be better.",
+    "Been using it daily for a few weeks and no complaints.",
+    "Matches the photos and the description accurately.",
+    "Setup was effortless and it performs great.",
+    "Happy with this purchase — it does exactly what I need.",
+    "Decent product, though there are cheaper alternatives out there.",
+    "Arrived earlier than expected and works perfectly.",
+    "The little details are well thought out. Nice job.",
+    "Reliable so far — support answered my questions quickly.",
+    None,  # rating-only review
+    None,
 ]
 
 
@@ -292,6 +323,65 @@ def seed_coupons(db: Session) -> None:
         print(f"+ coupon: {code}")
 
 
+def seed_reviews(db: Session, roles: dict[str, Role]) -> None:
+    """Demo reviewers + review rows; product rating/count follow real rows."""
+    shared_hash = hash_password("Reviewer123!")  # hashed once, reused for all
+
+    reviewers: list[User] = []
+    for first_name, last_name in REVIEWERS:
+        email = f"{first_name.lower()}.{last_name.lower()}@example.com"
+        user = db.scalar(select(User).where(User.email == email))
+        if user is None:
+            user = User(
+                email=email,
+                password_hash=shared_hash,
+                first_name=first_name,
+                last_name=last_name,
+                role_id=roles["customer"].id,
+                is_active=True,
+            )
+            db.add(user)
+        reviewers.append(user)
+    db.flush()
+
+    inserted = 0
+    seeded_products = 0
+    for product in db.scalars(select(Product)).all():
+        if db.scalar(select(Review.id).where(Review.product_id == product.id).limit(1)) is not None:
+            continue  # idempotent — reviews already exist for this product
+
+        rng = random.Random(f"flip-reviews-{product.slug}")
+        count = rng.randint(5, 9)
+        ratings: list[int] = []
+        for reviewer in rng.sample(reviewers, count):
+            rating = rng.choices([5, 4, 3], weights=[6, 3, 1])[0]
+            review = Review(
+                product_id=product.id,
+                user_id=reviewer.id,
+                rating=rating,
+                comment=rng.choice(REVIEW_COMMENTS),
+                is_approved=True,
+            )
+            # Backdate so the reviews page shows a natural spread of dates
+            stamp = utcnow() - timedelta(days=rng.randint(3, 240))
+            review.created_at = stamp
+            review.updated_at = stamp
+            db.add(review)
+            ratings.append(rating)
+            inserted += 1
+
+        # Single source of truth: aggregates come from the rows we just wrote
+        product.rating = round(sum(ratings) / len(ratings), 1)
+        product.rating_count = len(ratings)
+        db.add(product)
+        seeded_products += 1
+
+    db.flush()
+    if seeded_products:
+        print(f"+ reviews: {inserted} rows across {seeded_products} products "
+              f"({len(REVIEWERS)} demo reviewers)")
+
+
 def main() -> None:
     with SessionLocal() as db:
         roles = seed_roles(db)
@@ -300,6 +390,7 @@ def main() -> None:
         brands = seed_brands(db)
         seed_products(db, categories, brands)
         seed_coupons(db)
+        seed_reviews(db, roles)
         db.commit()
     print("Seed complete.")
 

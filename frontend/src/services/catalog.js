@@ -24,3 +24,13 @@ export const fetchNewArrivals = (limit = 8) => get("/products/new-arrivals", { l
 export const fetchBestSellers = (limit = 8) => get("/products/best-sellers", { limit });
 export const fetchCategories = (tree = false) => get("/categories", { tree });
 export const fetchBrands = () => get("/brands");
+
+// --- Reviews (Phase 7) -------------------------------------------------------
+export const fetchReviews = (productId, params = {}) =>
+  get(`/products/${productId}/reviews`, params);
+export const createReview = async (productId, payload) =>
+  (await api.post(`/products/${productId}/reviews`, payload)).data;
+export const updateReview = async (reviewId, payload) =>
+  (await api.patch(`/reviews/${reviewId}`, payload)).data;
+export const deleteReview = async (reviewId) =>
+  (await api.delete(`/reviews/${reviewId}`)).data;

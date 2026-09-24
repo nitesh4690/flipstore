@@ -2,7 +2,7 @@
 
 A modern, production-ready e-commerce platform built with a **React (Vite) frontend** and a **FastAPI + PostgreSQL backend**.
 
-> **Status: Phase 6 complete** (admin dashboard: stats, catalog/order management, customers). Remaining phases are listed in the [Roadmap](#roadmap) below.
+> **Status: Phase 7 complete** (mock payment gateway with refunds, product reviews, coupon management, transactional emails). Remaining phases are listed in the [Roadmap](#roadmap) below.
 
 ## Technology Stack
 
@@ -88,6 +88,9 @@ SECRET_KEY=<generate: python -c "import secrets; print(secrets.token_urlsafe(64)
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 STRIPE_SECRET_KEY=
+PAYMENT_PROVIDER=mock            # mock gateway; Stripe driver ships in Phase 8
+EMAIL_BACKEND=                   # "" auto: memory in tests, file (emails.log) in dev
+FRONTEND_URL=http://localhost:5173  # links inside emails
 ENVIRONMENT=development
 ```
 
@@ -123,7 +126,7 @@ alembic downgrade -1                                # roll back one migration
 ## Seed Commands
 
 ```powershell
-# Roles + admin + 8 categories + 11 brands + 22 products + 3 coupons (idempotent)
+# Roles + admin + 8 categories + 11 brands + 22 products + 3 coupons + ~160 reviews (idempotent)
 cd backend
 python -m app.seed
 ```
@@ -146,8 +149,8 @@ Storefront pages: `/` (home), `/products` (listing + filters), `/products/:slug`
 (detail), `/cart`, `/checkout` (7-step wizard), `/login`, `/register`, the
 protected account area `/account` (profile, addresses, orders, order detail,
 wishlist, change password), and the admin area `/admin` (dashboard, products,
-categories & brands, orders, order detail, customers, customer detail — the
-header shows an **Admin** link only for admin accounts).
+categories & brands, coupons, orders, order detail, customers, customer detail —
+the header shows an **Admin** link only for admin accounts).
 
 Dev coupons seeded for checkout testing: **WELCOME10** (10% off), **SAVE20**
 (20% off, min $100), **FLAT15** ($15 off, min $50).
@@ -156,7 +159,7 @@ Dev coupons seeded for checkout testing: **WELCOME10** (10% off), **SAVE20**
 
 ```powershell
 cd backend
-python -m pytest          # backend test suite (92 tests, isolated SQLite test DB)
+python -m pytest          # backend test suite (145 tests, isolated SQLite test DB)
 ```
 
 Other useful scripts:
@@ -166,13 +169,14 @@ npm run build     # production build of the frontend
 npm run preview   # preview the production build
 ```
 
-## Frontend Architecture (Phase 4 + 5 + 6)
+## Frontend Architecture (Phase 4 + 5 + 6 + 7)
 
 ```
 frontend/src/
 ├── components/   Header, Footer, ProductCard, ProductGrid, ProductFilter,
 │                 SearchBar, Pagination, QuantitySelector, RatingStars, Price,
 │                 Modal, ConfirmDialog, LoadingSpinner, Skeleton, EmptyState,
+│                 ReviewSection (rating summary, sort, write/edit/delete),
 │                 ProtectedRoute (auth guard with ?next= redirect),
 │                 AdminRoute (admin-role guard for /admin/*)
 ├── pages/        Home, Products, ProductDetail, Login, Register, Cart,
@@ -181,13 +185,14 @@ frontend/src/
 │   │             Orders, OrderDetail, Wishlist, ChangePassword
 │   └── admin/    Dashboard (KPI cards, 7-day revenue chart, low stock),
 │                 Products (search + CRUD modal), Categories (categories +
-│                 brands tabs), Orders (status tabs + search), OrderDetail
+│                 brands tabs), Coupons (search, CRUD, pause/activate), Orders
+│                 (status tabs + search), OrderDetail
 │                 (lifecycle status controls), Customers, CustomerDetail
 ├── layouts/      StoreLayout, AdminLayout (sidebar + Outlet, admin topbar)
 ├── context/      AuthContext, CartContext, WishlistContext, ToastContext
 ├── services/     api.js (axios + JWT interceptors), catalog.js (browse API),
 │                 shop.js (cart/wishlist/addresses/orders/account API),
-│                 admin.js (dashboard/orders/customers + admin CRUD API)
+│                 admin.js (dashboard/orders/customers + admin CRUD/coupons API)
 ├── hooks/        useDocumentTitle
 └── utils/        format.js (currency/date/image fallback)
 ```
@@ -204,9 +209,10 @@ reload-safe).
 or new, inline addresses persist to the address book) → billing (defaults to
 shipping) → shipping method (standard $9.99, free over $75 after discount ·
 express $19.99 · pickup free) → payment (mock card gateway or cash on delivery)
-→ review (live totals incl. coupon) → confirmation. The backend reserves stock
-atomically in a single transaction and rolls the whole order back if anything
-fails.
+→ review (live totals incl. coupon) → confirmation (a confirmation email is
+sent to the buyer). The backend authorizes the card through the mock gateway
+*before* anything persists, then reserves stock atomically in a single
+transaction and rolls the whole order back if anything fails.
 
 **Admin dashboard (Phase 6):** every `/admin/*` route is wrapped in `AdminRoute`
 (guests are sent to `/login?next=…`, signed-in non-admins never see admin UI)
@@ -299,6 +305,8 @@ Totals rules: tax 8% of (subtotal − discount); standard shipping $9.99
 `payment_method`: `card_mock` → order confirmed/paid immediately;
 `cod` → pending. Stock is decremented with conditional UPDATEs inside one
 transaction — a concurrent-sell conflict returns 409 and rolls everything back.
+A declined card (`4000 0000 0000 0002` → **402**) creates no order, touches no
+stock, and leaves the cart intact.
 
 ### Admin endpoints (Phase 6)
 
@@ -313,8 +321,51 @@ transaction — a concurrent-sell conflict returns 409 and rolls everything back
 | GET | `/api/admin/customers/{id}` | Admin | Customer profile, spend stats and latest 5 orders |
 
 Admin frontend routes: `/admin` (dashboard), `/admin/products`,
-`/admin/categories`, `/admin/orders`, `/admin/orders/:orderId`,
+`/admin/categories`, `/admin/coupons`, `/admin/orders`, `/admin/orders/:orderId`,
 `/admin/customers`, `/admin/customers/:customerId`.
+
+### Payments / reviews / coupons endpoints (Phase 7)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/api/payments/{id}` | Bearer | Payment record — owner (admin sees any); foreign IDs return 404 |
+| POST | `/api/payments/{id}/refund` | Admin | Refund a succeeded payment; order becomes `payment_status: refunded` (409 if already refunded or not succeeded) |
+| GET | `/api/products/{id}/reviews?sort=&page=&limit=` | — | Approved reviews + summary (average, count, 1–5 distribution, `verified`, `is_mine` when signed in) |
+| POST | `/api/products/{id}/reviews` | Bearer | Publish a review (rating 1–5; one per product per user, duplicate → 409) |
+| PATCH | `/api/reviews/{id}` | Bearer | Edit own review |
+| DELETE | `/api/reviews/{id}` | Bearer | Delete own review (admins can delete any) |
+| GET | `/api/coupons?search=&page=&limit=` | Admin | Discount codes with usage counters |
+| POST | `/api/coupons` | Admin | Create coupon (code normalized to uppercase, percentage ≤ 100, expiry after start) |
+| PATCH | `/api/coupons/{id}` | Admin | Update coupon (full payload) |
+| DELETE | `/api/coupons/{id}` | Admin | Delete coupon — existing orders keep their discount |
+
+**Mock payment gateway** (`app/services/payments.py`, `PAYMENT_PROVIDER=mock`):
+checkout authorizes `card` details *before* anything is persisted —
+`4242 4242 4242 4242` succeeds (any other Luhn-valid number too),
+`4000 0000 0000 0002` is declined (**402**), `4000 0000 0000 9995` has
+insufficient funds, and Luhn-invalid/expired cards return **400**. A decline
+never creates an order. Omitting `card` keeps the legacy always-approve path
+for existing API clients. Refunds are admin-only; the Stripe driver ships in
+Phase 8 behind the same interface.
+
+**Reviews**: `product.rating` / `product.rating_count` are always recomputed
+from approved review rows on create/update/delete — the seed writes 5–9
+deterministic reviews per product from 12 demo reviewers, so catalog numbers
+are truthful. Reviewers with a non-cancelled order containing the product get
+a **Verified purchase** badge, and buyers can edit/delete their own review
+from the product page (summary, distribution bars, sorting and pagination).
+
+**Coupons**: management is admin-only (`/admin/coupons` — search, create/edit
+modal, pause/activate, delete with confirm). Validation and discount math
+against carts stayed in `services/cart.py`; deleting a coupon nulls the
+`orders.coupon_id` reference so history keeps its discounts.
+
+**Emails** (`app/services/email.py`): pluggable backends — `memory` (tests,
+inspectable outbox), `file` → `backend/emails.log` (development default),
+`console`, and `smtp` (`EMAIL_BACKEND=smtp` + `SMTP_*` settings).
+`send_email` never raises, so a broken mailer can't break checkout. Hooks:
+welcome email on registration, order confirmation after checkout commits, and
+an order-status email whenever an admin actually changes a status field.
 
 ## Docker Setup
 
@@ -334,5 +385,5 @@ Admin frontend routes: `/admin` (dashboard), `/admin/products`,
 | 4 | React storefront: header, home, listing, details | ✅ |
 | 5 | Cart, wishlist, checkout, orders | ✅ |
 | 6 | Admin dashboard (products, categories, orders, customers) | ✅ |
-| 7 | Payments, email notifications, reviews, coupons | ⬜ |
+| 7 | Payments, email notifications, reviews, coupons | ✅ |
 | 8 | Testing, security hardening, performance, Docker, deployment | ⬜ |

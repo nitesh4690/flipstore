@@ -218,6 +218,14 @@ export default function Checkout() {
           : { billing_address: billingForm },
       );
     }
+    if (paymentMethod === "card_mock") {
+      // Sent to the mock gateway: 4242… succeeds, 4000…0002 is declined
+      payload.card = {
+        number: card.number.trim(),
+        expiry: card.expiry.trim(),
+        cvc: card.cvc.trim(),
+      };
+    }
     return payload;
   };
 
@@ -505,6 +513,12 @@ export default function Checkout() {
                 <div className="flex items-end text-xs text-slate-400">
                   🔒 Encrypted · test mode
                 </div>
+                <p className="text-xs leading-relaxed text-slate-500 sm:col-span-3">
+                  Mock gateway — no real charge. Test cards:{" "}
+                  <span className="font-semibold text-slate-700">4242 4242 4242 4242</span>{" "}
+                  succeeds, <span className="font-semibold text-slate-700">4000 0000 0000 0002</span>{" "}
+                  is declined.
+                </p>
               </div>
             )}
           </div>
@@ -639,6 +653,10 @@ export default function Checkout() {
             <h2 className="mt-4 text-2xl font-extrabold text-slate-900">Thank you!</h2>
             <p className="mt-1 text-slate-500">
               Your order <strong>{placedOrder?.order_number}</strong> has been placed.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              A confirmation email is on its way to{" "}
+              <strong>{user?.email}</strong>.
             </p>
             <div className="mx-auto mt-6 max-w-md rounded-xl bg-slate-50 p-4 text-left text-sm">
               <div className="flex justify-between py-1">

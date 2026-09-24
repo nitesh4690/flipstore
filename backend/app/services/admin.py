@@ -198,11 +198,33 @@ def get_admin_order(db: Session, order_id: uuid.UUID) -> Order:
 
 def update_order(db: Session, order: Order, payload: AdminOrderUpdate) -> Order:
     """Apply provided lifecycle fields (values already validated by Pydantic)."""
+    labels = {
+        "status": "Order status",
+        "payment_status": "Payment status",
+        "shipping_status": "Shipping status",
+    }
+    changes: dict[str, tuple[str, str]] = {}
     for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(order, field, value)
+        current = getattr(order, field)
+        if current != value:
+            changes[labels.get(field, field)] = (current, value)
+            setattr(order, field, value)
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    # Status-change email (delivery failures are logged, never raised)
+    if changes:
+        buyer = order.user
+        if buyer is not None:
+            from app.services import email as email_service
+
+            email_service.send_order_status_update(
+                to=buyer.email,
+                first_name=buyer.first_name,
+                order_number=order.order_number,
+                changes=changes,
+            )
     return order
 
 

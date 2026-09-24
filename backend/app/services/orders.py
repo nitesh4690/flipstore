@@ -1,9 +1,11 @@
 """Order/checkout pipeline.
 
 Single-transaction flow:
-  validate cart → re-check inventory → compute totals → create order + snapshot
-  items → atomic conditional stock decrement → payment record → apply coupon →
-  clear cart. Any AppError raised before commit rolls everything back.
+  validate cart → re-check inventory → compute totals → authorize card (mock
+  gateway; raises before anything persists) → addresses → create order +
+  snapshot items → atomic conditional stock decrement → payment record →
+  apply coupon → clear cart → confirmation email. Any AppError raised before
+  commit rolls everything back.
 """
 
 import secrets
@@ -23,6 +25,8 @@ from app.models.address import Address
 from app.models.user import User
 from app.schemas.order import CheckoutRequest
 from app.services import cart as cart_service
+from app.services import email as email_service
+from app.services import payments as payment_gateway
 from app.utils.datetime import utcnow
 
 
@@ -73,7 +77,12 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
     items_list = list(cart.items)
     totals = cart_service.compute_totals(db, items_list, cart.coupon_code, payload.shipping_method)
 
-    # 3. Addresses (persist inline ones so they land in the address book)
+    # 3. Card authorization (mock gateway) — raises BEFORE anything persists
+    charge = None
+    if payload.payment_method == "card_mock":
+        charge = payment_gateway.authorize_card(payload.card)
+
+    # 4. Addresses (persist inline ones so they land in the address book)
     shipping_address = _resolve_address(db, user, payload, "shipping")
     if payload.billing_same_as_shipping:
         billing_address = shipping_address
@@ -86,7 +95,7 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
         coupon_id = db.scalar(select(Coupon.id).where(Coupon.code == totals["coupon_code"]))
 
     try:
-        # 4. Order + snapshot items
+        # 5. Order + snapshot items
         order = Order(
             user_id=user.id,
             order_number=_new_order_number(),
@@ -120,7 +129,7 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
                 )
             )
 
-        # 5. Atomic conditional stock decrement (works on SQLite + PostgreSQL)
+        # 6. Atomic conditional stock decrement (works on SQLite + PostgreSQL)
         for item, product, variant in lines:
             target = variant if variant is not None else product
             result = db.execute(
@@ -131,8 +140,8 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
             if result.rowcount == 0:
                 raise AppError("Stock changed while checking out — please retry", 409)
 
-        # 6. Payment record (mock provider — always succeeds)
-        paid = payload.payment_method == "card_mock"
+        # 7. Payment record (mock gateway result from step 3)
+        paid = charge is not None and charge["status"] == "succeeded"
         db.add(
             Payment(
                 order_id=order.id,
@@ -141,12 +150,12 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
                 amount=Decimal(str(totals["total"])),
                 currency="USD",
                 status="succeeded" if paid else "pending",
-                transaction_id=f"MOCK-{secrets.token_hex(8).upper()}",
+                transaction_id=charge["transaction_id"] if charge else f"MOCK-{secrets.token_hex(8).upper()}",
             )
         )
         order.payment_status = "paid" if paid else "pending"
 
-        # 7. Coupon usage counter
+        # 8. Coupon usage counter
         if totals["coupon_code"]:
             db.execute(
                 update(Coupon)
@@ -154,7 +163,7 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
                 .values(used_count=Coupon.used_count + 1)
             )
 
-        # 8. Clear cart
+        # 9. Clear cart
         for item in items_list:
             db.delete(item)
         cart.coupon_code = None
@@ -165,6 +174,16 @@ def checkout(db: Session, user: User, payload: CheckoutRequest) -> Order:
         raise
 
     db.refresh(order)
+
+    # Confirmation email (delivery failures are logged, never raised)
+    email_service.send_order_confirmation(
+        to=user.email,
+        first_name=user.first_name,
+        order_number=order.order_number,
+        total=float(order.total),
+        item_count=len(order.items),
+        payment_status=order.payment_status,
+    )
     return order
 
 

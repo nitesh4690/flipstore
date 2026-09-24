@@ -51,6 +51,10 @@ def register_user(db: Session, payload: RegisterRequest) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    from app.services import email as email_service
+
+    email_service.send_welcome(user.email, user.first_name)
     return user
 
 

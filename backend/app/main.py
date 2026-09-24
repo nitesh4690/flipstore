@@ -15,9 +15,12 @@ from app.routers import (
     brands,
     cart,
     categories,
+    coupons,
     health,
     orders,
+    payments,
     products,
+    reviews,
     users,
     wishlist,
 )
@@ -89,6 +92,9 @@ app.include_router(cart.router, prefix=settings.API_V1_PREFIX)
 app.include_router(wishlist.router, prefix=settings.API_V1_PREFIX)
 app.include_router(addresses.router, prefix=settings.API_V1_PREFIX)
 app.include_router(orders.router, prefix=settings.API_V1_PREFIX)
+app.include_router(payments.router, prefix=settings.API_V1_PREFIX)
+app.include_router(reviews.router, prefix=settings.API_V1_PREFIX)
+app.include_router(coupons.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", include_in_schema=False)

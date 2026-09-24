@@ -41,7 +41,21 @@ class Settings(BaseSettings):
     ]
 
     # Payments (Phase 7)
+    PAYMENT_PROVIDER: str = "mock"  # mock gateway now; Stripe driver lands later
     STRIPE_SECRET_KEY: str = ""
+
+    # Email (Phase 7) — "" auto-selects: memory in tests, file in development
+    EMAIL_BACKEND: str = ""  # memory | file | console | smtp
+    EMAIL_FROM: str = "FlipStore <no-reply@flipstore.example>"
+    EMAIL_FILE_PATH: str = "emails.log"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+
+    # Storefront base URL (used for links inside emails)
+    FRONTEND_URL: str = "http://localhost:5173"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

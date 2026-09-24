@@ -17,6 +17,11 @@ from app.core.security import decode_access_token
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# Same token scheme, but missing credentials resolve to None instead of 401 —
+# used by public endpoints that personalise output when a user is signed in.
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl="/api/auth/login", auto_error=False
+)
 
 # In-memory token revocation list (jti -> expiry epoch).
 # Sufficient for a single process; a Redis/DB store can replace it later.
@@ -75,3 +80,17 @@ def get_current_admin(user: User = Depends(get_current_active_user)) -> User:
     if user.role_name != "admin":
         raise AppError("Admin access required", status_code=403)
     return user
+
+
+def get_current_optional_user(
+    token: str | None = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Signed-in user, or None for anonymous callers.
+
+    An *invalid/expired* token still raises 401 so stale sessions surface the
+    normal auth-error path (the axios interceptor clears them).
+    """
+    if not token:
+        return None
+    return get_current_user(token=token, db=db)

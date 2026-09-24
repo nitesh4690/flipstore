@@ -11,11 +11,24 @@ SHIPPING_METHODS = ("standard", "express", "pickup")
 PAYMENT_METHODS = ("card_mock", "cod")
 
 
+class CardDetails(BaseModel):
+    """Card fields sent by the checkout payment step (mock gateway)."""
+
+    number: str = Field(min_length=12, max_length=25)
+    expiry: str = Field(pattern=r"^\d{2}/\d{2}$", description="MM/YY")
+    cvc: str = Field(pattern=r"^\d{3,4}$")
+    holder_name: str | None = Field(default=None, max_length=120)
+
+
 class CheckoutRequest(BaseModel):
     shipping_method: str = Field(default="standard")
     payment_method: str = Field(default="card_mock")
     billing_same_as_shipping: bool = True
     notes: str | None = Field(default=None, max_length=1000)
+    card: CardDetails | None = Field(
+        default=None,
+        description="Required in the UI for card payments; omitted = legacy mock approval",
+    )
 
     # Provide either a saved address id OR an inline address
     shipping_address_id: uuid.UUID | None = None
